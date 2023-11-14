@@ -5,26 +5,67 @@ date: "2023-11-08"
 output: github_document
 ---
 
+```{r}
+library(tidyverse)
+```
+
+
+## Problem 1 
+
+Reading in the homicide datafile. 
 ```{r setup, include=FALSE}
+homicide = read.csv("data/homicide-data.csv")
+```
+
+**Description of raw data**
+
+The data includes information on `nrow(homicide)` criminal homicides over the past decade in 50 of the largest American cities. The data included the location of the killing, whether an arrest was made and, in most cases, basic demographic information about each victim. Overall there are `ncol(homicide)` variables in the dataset. 
+
+```{r}
+homicide = 
+  homicide |> 
+  mutate(city_state = paste(city, state, sep = ", ")
+)
+
+baltimore_df=
+  homicide |> 
+  filter(city == "Baltimore") |> 
+  mutate(
+    resolved= as.numeric(disposition == "Closed by arrest"),
+    victim_age= as.numeric(victim_age)
+  ) |> 
+  select(resolved, victim_age, victim_race, victim_sex)
 
 ```
 
-## R Markdown
+Logistic Regression
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
+```{r}
+fit_logistic=
+  baltimore_df |> 
+  glm(
+    resolved ~ victim_age + victim_race + victim_sex, 
+    data = _, 
+    family = binomial())
+  )
 ```
 
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
+Look at the results
+```{r}
+fit_logistic |> 
+  broom::tidy() |> 
+  mutate(OR= exp(estimate)) |> 
+  select(term, estimate, OR)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+## Problem 2
+
+```{r}
+take2 <- list.files("data1/", pattern = "\\.csv$", full.names = FALSE) |> 
+  as.data.frame() |> 
+  setNames("file_path")
+ 
+
+```
+
+
