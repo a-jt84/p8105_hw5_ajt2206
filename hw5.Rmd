@@ -7,6 +7,21 @@ output: github_document
 
 ```{r}
 library(tidyverse)
+
+knitr::opts_chunk$set(
+	echo = TRUE,
+	warning = FALSE,
+	fig.width = 8, 
+  fig.height = 6,
+  out.width = "90%"
+)
+
+theme_set(theme_minimal() + theme(legend.position = "bottom"))
+
+options(
+  ggplot2.continuous.colour = "viridis",
+  ggplot2.continuous.fill = "viridis"
+)
 ```
 
 
@@ -60,12 +75,52 @@ fit_logistic |>
 
 ## Problem 2
 
+**Creating initial dateframe with `list.files`**
 ```{r}
 take2 <- list.files("data1/", pattern = "\\.csv$", full.names = FALSE) |> 
   as.data.frame() |> 
   setNames("file_path")
- 
+```
+I used the `list.files` function to pull in all my csv files from my "data1" folder. I decided to only keep the file name and not the full path. Moreover, I used `as.data.frame()` to convert the result into a dataframe with `setNames("file_path")` specifying my column name. 
 
+**Using map function**
+```{r}
+take2 <- take2 |> 
+  mutate(weeks = map(file_path, ~ read_csv(file.path("data1/", .x))))
+```
+The `map` function was used in conjunction with `read_csv` to read over all my values in the original "file_path" column and pull them into a new variable "weeks."
+
+**Tidying data - pivoting longer**
+```{r}
+take2 =
+  take2 |> 
+  unnest(weeks) |> 
+  pivot_longer(
+    cols= starts_with("Week_"),
+    names_to = "week",
+    values_to = "value"
+  ) |> 
+  separate(file_path, into =c("arm", "ID"), sep ="_", remove = FALSE) |> 
+  mutate(number = sub(".csv", "", ID),
+         arm= case_match(arm,
+                         "con" ~ "Control",
+                         "exp" ~"Experiment"))
+```
+To clean my data, I wanted to perform a few key steps 
+
+1. Unnesting the weeks variable, so that it was easier to manipulate. 
+1. Pivoting the data to long format to make graphing a spaghetti plot easier. Instead of having the weeks variable in one row, the data was pivoted so that "week" became a column with values week_1 to week_8 and their corresponding values were placed in the "value" column. 
+1. To add Arm Names and Study ID: I used `separate` to create a new variable to identify which participants were in Control vs. Experiment arm, and their Study ID (I am assuming they were paired). I used the "remove = FALSE" section to retain the original file_path variable. 
+1. Last, I just decided to rename the values within the "arm" variable to Control and Experiment using the `case_match()` function. 
+
+
+**Plotting**
+```{r}        
+take2 |> 
+  ggplot(aes(x=week, y=value, group=file_path, color= arm))+ 
+  geom_line()+
+  labs(title= "Control vs. Experimental Arms Over 8 Weeks")
 ```
 
+**Differences between groups**: Overall it appears that Experiment participants have higher values than Control participants throughout the 8 weeks. Control participants saw there values stay the same throuhgout the period whereas Experiment participants generally appeared to trend upward.
 
