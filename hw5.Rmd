@@ -56,13 +56,77 @@ baltimore_df=
 
 ```
 
-Logistic Regression
+```{r}
+homicide_df = 
+  read_csv("data/homicide-data.csv", na = c("", "NA", "Unknown")) %>%
+  mutate(
+    city_state = str_c(city, state, sep = ", "),
+    resolution = case_when(
+      disposition == "Closed without arrest" ~ "unsolved",
+      disposition == "Open/No arrest"        ~ "unsolved",
+      disposition == "Closed by arrest"      ~ "solved"
+    )
+  ) %>% 
+  filter(city_state != "Tulsa, AL") 
+```
+
+The resulting dataframe has `r nrow(homicide_df)` entries, on variables that include the victim name, race, age, and sex; the date the homicide was reported; and the location of the homicide. In cleaning, I created a `city_state` variable that includes both city and state, and a `resolution` variable to indicate whether the case was closed by arrest. I also excluded one entry in Tulsa, AL, which is not a major US city and is most likely a data entry error. 
+
+In the next code chunk, I group within cities and summarize to produce the total number of homicides and the number that are solved. 
+
+```{r}
+city_homicide_df = 
+  homicide_df %>% 
+  select(city_state, disposition, resolution) %>% 
+  group_by(city_state) %>% 
+  summarize(
+    hom_total = n(),
+    hom_unsolved = sum(resolution == "unsolved"))
+```
+
+Focusing only on Baltimore, MD, I can use the `prop.test` and `broom::tidy` functions to obtain an estimate and CI of the proportion of unsolved homicides in that city. The table below shows those values.
+
+```{r}
+bmore_test = 
+  prop.test(
+    x = filter(city_homicide_df, city_state == "Baltimore, MD") %>% pull(hom_unsolved),
+    n = filter(city_homicide_df, city_state == "Baltimore, MD") %>% pull(hom_total)) 
+
+broom::tidy(bmore_test) %>% 
+  knitr::kable(digits = 3)
+```
+
+Building on this code, I can use functions in the `purrr` package to obtain estimates and CIs for the proportion of unsolved homicides in each city in my dataset. The code below implements this analysis. 
+
+```{r}
+test_results = 
+  city_homicide_df %>% 
+  mutate(
+    prop_tests = map2(hom_unsolved, hom_total, \(x, y) prop.test(x = x, n = y)),
+    tidy_tests = map(prop_tests, broom::tidy)) %>% 
+  select(-prop_tests) %>% 
+  unnest(tidy_tests) %>% 
+  select(city_state, estimate, conf.low, conf.high) %>% 
+  mutate(city_state = fct_reorder(city_state, estimate))
+```
+
+Finally, I make a plot showing the estimate (and CI) of the proportion of unsolved homicides in each city.
+
+```{r}
+test_results %>% 
+  mutate(city_state = fct_reorder(city_state, estimate)) %>% 
+  ggplot(aes(x = city_state, y = estimate)) + 
+  geom_point() + 
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high)) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+This figure suggests a very wide range in the rate at which homicides are solved -- Chicago is noticeably high and, given the narrowness of the CI, likely is the location of many homicides. 
 
 
-Look at the results
 
 
-## Problem 2
+# Problem 2
 
 **Creating initial dateframe with `list.files`**
 ```{r}
@@ -113,17 +177,9 @@ take2 |>
 
 **Differences between groups**: Overall it appears that Experiment participants have higher values than Control participants throughout the 8 weeks. Control participants saw there values stay the same throuhgout the period whereas Experiment participants generally appeared to trend upward.
 
-## Problem 3
+# Problem 3
 
-First set the following design elements:
-
-Fix n=30
-Fix σ=5
-Set μ=0
-. Generate 5000 datasets from the model
-
-x∼Normal[μ,σ]
-
+**Simulated Power Analysis**
 ```{r}
 set.seed(12345)
 
@@ -155,7 +211,14 @@ ran_samp <- function(mu) {
 
 power_information =
 simulate_power_analysis(0:6)
+````
+**Summary of my function(s)**
+To start, I created a function `ran_samp`. `ran_samp` first creates a tibble  with a randomly drawn normal distribution, it runs a t-test on the generated values, and extracts the estimated mu values and the p_values associated with the t-test. I nested `ran_samp` within a larger function named `simulate_power_analysis.` `simulate_power_analysis` creates a dataframe "result_df." `expand_grid` creates a tibble with a mu column (which is set in my `function` statement as mu_values, so whatever value set for mu_values will be one set of values) and an iteration column spanning 1 to 5000. From there, I create an estimate_df variable which uses the map function to trigger my `ran_samp` function to run for each value of mu (mu=mu_values). Lastly, I unnest the estimate_df variable. 
 
+With my function(s) created, I just ran `simulate_power_analysis` with mu_values= 0:6 and saved the results in the `power_information` dataframe. 
+
+**Graphing Proportion of Rejected at Different True Mean Values**
+```{r}
 power_information |> 
   mutate(rejected = ifelse(p_value <0.05, "Rejected", "Not_Rejected")) |> 
   group_by(mu) |> 
@@ -167,7 +230,36 @@ power_information |>
   labs(title = "Proportion of Rejected vs. Non-Rejected for Different True Mean Values",
        x = "mu",
        y = "Proportion Rejected")
+```
+**Process**: I first created a variable "rejected" via an `ifelse` statement which stated that if the p_value variable was <0.05 then "rejected" = "Rejected", if not "rejected" = "Not_Rejected." From there, I grouped my data by the true mean (mu) and created a summary table where "proportion_rejected" = the proportion of null that were rejected by true mean. I chose to graph the plot with a bar plot as I found this a very readable way to display our data as each Category (mu value) only had 1 value (Proportion Rejected)
 
+**Association between effect size and power**: Power increases as effect size increases. Power was lowest at true mean 0, and highest at true mean 6. 
+
+**Graphing True Mean x Average Estimate Mean**
+```{r}
+power_information |> 
+  group_by(mu) |> 
+  mutate(avg_mu = mean(mu_hat)) |> 
+  filter(p_value <0.05) |> 
+  summarize(avg_mu_reject= mean(mu_hat), avg_mu) |> 
+  ggplot()+
+  geom_line(aes(x = mu, y = avg_mu, color = "blue")) +
+  geom_line(aes(x = mu, y = avg_mu_reject, color = "red")) +
+  labs(title = "Avg Estimated Mean Overall vs. Rejected Only ",
+       x = "True Mean",
+       y = "Average Estimated Mean")+
+  scale_color_manual(values = c("blue" = "blue", "red" = "red"),
+                     labels = c("Average Estimate", "Average Estimate (Rejected Only)"))
+
+#Is the sample average of μ^
+ #across tests for which the null is rejected approximately equal to the true value of μ
+#? Why or why not?
 
 ```
+**Process**: First, I grouped by true mean (mu) then used `mutate` to create an avg_mu value which was mean of estimated mu (mu_hat). Next, I filtered to observations where we would reject the null (p_value <0.05). I used a `summarize` statement to get the avg mu value of only the rejected observations while retaining the overall avg_mu. Then i used `ggplot` and overlayed two line graphs on the same graph to make visual comparison easier. 
 
+**Interpretation**: No, or more accurately it depends on if we used the all observations or just the rejected observations. True Mean = Average Estimated Mean approximately for all observations; however, it does not if we only take the Rejected Observations. The Rejected Observations differ from the True Mean at lower values (0 to 3), especially around ~1.5. 
+
+We know from the bar plot that power is fairly low for lower True Mean values (effect size small = power small). This means that in order to be a rejected observation at a lower True Mean value, said observation needs to have an appreciably different estimated mean than the set effect size/true mean. Therefore, we would expect the estimated mean to differ from true. 
+
+0 has too little power to see this effect; whereas, around 3 there is high enough power that the estimated mean wouldn't need to differ much from true mean to be within our rejection territory (p_value <0.05). 

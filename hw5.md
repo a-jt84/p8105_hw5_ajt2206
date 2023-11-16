@@ -19,6 +19,20 @@ library(tidyverse)
     ## ℹ Use the conflicted package (<http://conflicted.r-lib.org/>) to force all conflicts to become errors
 
 ``` r
+library(rvest)
+```
+
+    ## 
+    ## Attaching package: 'rvest'
+    ## 
+    ## The following object is masked from 'package:readr':
+    ## 
+    ##     guess_encoding
+
+``` r
+library(purrr)
+library(broom)
+
 knitr::opts_chunk$set(
     echo = TRUE,
     warning = FALSE,
@@ -67,7 +81,7 @@ Logistic Regression
 
 Look at the results
 
-## Problem 2
+# Problem 2
 
 **Creating initial dateframe with `list.files`**
 
@@ -285,4 +299,115 @@ participants have higher values than Control participants throughout the
 the period whereas Experiment participants generally appeared to trend
 upward.
 
-## Problem 3
+# Problem 3
+
+**Simulated Power Analysis**
+
+``` r
+set.seed(12345)
+
+simulate_power_analysis <- function(mu_values, n = 30, sigma = 5, iterations = 5000, alpha = 0.05) {
+  
+ran_samp <- function(mu) {
+  data <- tibble(x= rnorm(n, mu, sigma))
+
+  t_test_result <- data |> pull(x) |> t.test()
+
+  estimate = data |>  pull(x) |> mean()
+  p_value = t_test_result |> tidy() |> pull(p.value)
+
+  return(tibble(mu_hat= estimate, p_value = p_value))
+}
+
+  result_df <- 
+    expand_grid(
+      mu = mu_values,
+      iter = 1:iterations
+    ) |> 
+    mutate(
+      estimate_df = map(mu, ~ran_samp(.))
+    ) |> 
+    unnest(estimate_df)
+  
+  return(result_df)
+}
+
+power_information =
+simulate_power_analysis(0:6)
+```
+
+**Summary of my function(s)** To start, I created a function `ran_samp`.
+`ran_samp` first creates a tibble with a randomly drawn normal
+distribution, it runs a t-test on the generated values, and extracts the
+estimated mu values and the p_values associated with the t-test. I
+nested `ran_samp` within a larger function named
+`simulate_power_analysis.` `simulate_power_analysis` creates a dataframe
+“result_df.” `expand_grid` creates a tibble with a mu column (which is
+set in my `function` statement as mu_values, so whatever value set for
+mu_values will be one set of values) and an iteration column spanning 1
+to 5000. From there, I create an estimate_df variable which uses the map
+function to trigger my `ran_samp` function to run for each value of mu
+(mu=mu_values). Lastly, I unnest the estimate_df variable.
+
+With my function(s) created, I just ran `simulate_power_analysis` with
+mu_values= 0:6 and saved the results in the `power_information`
+dataframe.
+
+## Graphing Proportion of Rejected at Different True Mean Values
+
+``` r
+power_information |> 
+  mutate(rejected = ifelse(p_value <0.05, "Rejected", "Not_Rejected")) |> 
+  group_by(mu) |> 
+  summarize(
+    proportion_rejected = mean(rejected == "Rejected")
+  ) |> 
+  ggplot(aes(x = mu, y = proportion_rejected, fill=mu)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Proportion of Rejected vs. Non-Rejected for Different True Mean Values",
+       x = "mu",
+       y = "Proportion Rejected")
+```
+
+<img src="hw5_files/figure-gfm/unnamed-chunk-8-1.png" width="90%" />
+**Process**: I first created a variable “rejected” via an `ifelse`
+statement which stated that if the p_value variable was \<0.05 then
+“rejected” = “Rejected”, if not “rejected” = “Not_Rejected.” From there,
+I grouped my data by the true mean (mu) and created a summary table
+where “proportion_rejected” = the proportion of null that were rejected
+by true mean. I chose to graph the plot with a bar plot as I found this
+a very readable way to display our data as each Category (mu value) only
+had 1 value (Proportion Rejected)
+
+**Association between effect size and power**: Power increases as effect
+size increases. Power was lowest at true mean 0, and highest at true
+mean 6.
+
+## Graphing True Mean x Average Estimate Mean
+
+``` r
+power_information |> 
+  group_by(mu) |> 
+  mutate(avg_mu = mean(mu_hat)) |> 
+  filter(p_value <0.05) |> 
+  summarize(avg_mu_reject= mean(mu_hat), avg_mu) |> 
+  ggplot()+
+  geom_line(aes(x = mu, y = avg_mu, color = "blue")) +
+  geom_line(aes(x = mu, y = avg_mu_reject, color = "red")) +
+  labs(title = "Avg Estimated Mean Overall vs. Rejected Only ",
+       x = "True Mean",
+       y = "Average Estimated Mean")+
+  scale_color_manual(values = c("blue" = "blue", "red" = "red"),
+                     labels = c("Average Estimate", "Average Estimate (Rejected Only)"))
+```
+
+    ## `summarise()` has grouped output by 'mu'. You can override using the `.groups`
+    ## argument.
+
+<img src="hw5_files/figure-gfm/unnamed-chunk-9-1.png" width="90%" />
+
+``` r
+#Is the sample average of μ^
+ #across tests for which the null is rejected approximately equal to the true value of μ
+#? Why or why not?
+```
