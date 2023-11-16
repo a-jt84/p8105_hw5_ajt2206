@@ -7,6 +7,9 @@ output: github_document
 
 ```{r}
 library(tidyverse)
+library(rvest)
+library(purrr)
+library(broom)
 
 knitr::opts_chunk$set(
 	echo = TRUE,
@@ -55,23 +58,9 @@ baltimore_df=
 
 Logistic Regression
 
-```{r}
-fit_logistic=
-  baltimore_df |> 
-  glm(
-    resolved ~ victim_age + victim_race + victim_sex, 
-    data = _, 
-    family = binomial())
-  )
-```
 
 Look at the results
-```{r}
-fit_logistic |> 
-  broom::tidy() |> 
-  mutate(OR= exp(estimate)) |> 
-  select(term, estimate, OR)
-```
+
 
 ## Problem 2
 
@@ -123,4 +112,62 @@ take2 |>
 ```
 
 **Differences between groups**: Overall it appears that Experiment participants have higher values than Control participants throughout the 8 weeks. Control participants saw there values stay the same throuhgout the period whereas Experiment participants generally appeared to trend upward.
+
+## Problem 3
+
+First set the following design elements:
+
+Fix n=30
+Fix σ=5
+Set μ=0
+. Generate 5000 datasets from the model
+
+x∼Normal[μ,σ]
+
+```{r}
+set.seed(12345)
+
+simulate_power_analysis <- function(mu_values, n = 30, sigma = 5, iterations = 5000, alpha = 0.05) {
+  
+ran_samp <- function(mu) {
+  data <- tibble(x= rnorm(n, mu, sigma))
+
+  t_test_result <- data |> pull(x) |> t.test()
+
+  estimate = data |>  pull(x) |> mean()
+  p_value = t_test_result |> tidy() |> pull(p.value)
+
+  return(tibble(mu_hat= estimate, p_value = p_value))
+}
+
+  result_df <- 
+    expand_grid(
+      mu = mu_values,
+      iter = 1:iterations
+    ) |> 
+    mutate(
+      estimate_df = map(mu, ~ran_samp(.))
+    ) |> 
+    unnest(estimate_df)
+  
+  return(result_df)
+}
+
+power_information =
+simulate_power_analysis(0:6)
+
+power_information |> 
+  mutate(rejected = ifelse(p_value <0.05, "Rejected", "Not_Rejected")) |> 
+  group_by(mu) |> 
+  summarize(
+    proportion_rejected = mean(rejected == "Rejected")
+  ) |> 
+  ggplot(aes(x = mu, y = proportion_rejected, fill=mu)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Proportion of Rejected vs. Non-Rejected for Different True Mean Values",
+       x = "mu",
+       y = "Proportion Rejected")
+
+
+```
 
